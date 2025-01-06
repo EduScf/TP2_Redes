@@ -23,7 +23,7 @@ struct client_data{
     struct sockaddr_storage storage;
 };
 
-void * client_thread(void *data){
+void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
 
@@ -32,19 +32,36 @@ void * client_thread(void *data){
     printf("[log] connection from %s\n", caddrstr);
 
     char buf[BUFSZ];
-    memset(buf, 0, BUFSZ);
-    size_t count = recv(cdata->csock, buf, BUFSZ, 0);
-    printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+    char response[BUFSZ]; // Buffer separado para a resposta
+    while (1) {
+        memset(buf, 0, BUFSZ);
+        size_t count = recv(cdata->csock, buf, BUFSZ, 0);
+        if (count == 0) {
+            // Conexão encerrada pelo cliente
+            printf("[log] connection closed by %s\n", caddrstr);
+            break;
+        }
+        if (count == -1) {
+            perror("recv");
+            break;
+        }
 
-    sprintf(buf, "remote endpoint: %.1000s\n", caddrstr);
-    count = send(cdata->csock, buf, strlen(buf)+1, 0);
-    if(count != strlen(buf)+1){
-        logexit("send");
+        printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+
+        // Construir a resposta no buffer separado, limitando o tamanho de buf
+        snprintf(response, BUFSZ, "Echo from server: %.1000s", buf);
+        count = send(cdata->csock, response, strlen(response) + 1, 0);
+        if (count != strlen(response) + 1) {
+            perror("send");
+            break;
+        }
     }
+
     close(cdata->csock);
     free(cdata);
     pthread_exit(EXIT_SUCCESS);
 }
+
 
 int main(int argc, char **argv){
     if(argc < 3){

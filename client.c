@@ -18,58 +18,67 @@ void usage(int argc, char **argv){
     exit(EXIT_FAILURE);
 }
 
-int main(int argc, char **argv){
-    if(argc < 3){
+int main(int argc, char **argv) {
+    if (argc < 3) {
         usage(argc, argv);
     }
 
     struct sockaddr_storage storage;
-    if(0 != addrparse(argv[1], argv[2], &storage)){
+    if (0 != addrparse(argv[1], argv[2], &storage)) {
         usage(argc, argv);
     }
-    int s;
-    s = socket(storage.ss_family, SOCK_STREAM, 0);
-    if(s == -1){
-        logexit("socket");
-    }    
-    struct sockaddr *addr = (struct sockaddr *) &storage;
 
-    if(0 != connect(s, addr, sizeof(storage))){
+    int s = socket(storage.ss_family, SOCK_STREAM, 0);
+    if (s == -1) {
+        logexit("socket");
+    }
+    struct sockaddr *addr = (struct sockaddr *)&storage;
+
+    if (0 != connect(s, addr, sizeof(storage))) {
         logexit("connect");
     }
 
     char addrstr[BUFSZ];
     addrtostr(addr, addrstr, BUFSZ);
-
     printf("connected to %s\n", addrstr);
 
     char buf[BUFSZ];
-    memset(buf, 0, BUFSZ);
-    printf("Mensagem: ");
-    fgets(buf, BUFSZ-1, stdin);
-    size_t count = send(s, buf, strlen(buf)+1, 0);
-    if(count != strlen(buf)+1){
-        logexit("send");
-    }
+    while (1) {
+        printf("Mensagem: ");
+        memset(buf, 0, BUFSZ);
+        fgets(buf, BUFSZ - 1, stdin);
 
-    memset(buf, 0, BUFSZ);
-    unsigned total = 0;
-    while(1){
-        count = recv(s, buf, BUFSZ - total, 0);
-        if(count == 0){
-            //Conexão encerrada pelo servidor
+        // Remover newline do final da mensagem
+        size_t len = strlen(buf);
+        if (buf[len - 1] == '\n') {
+            buf[len - 1] = '\0';
+        }
+
+        // Verificar se o usuário quer encerrar a conexão
+        if (strcmp(buf, "exit") == 0) {
+            printf("Encerrando a conexão...\n");
             break;
         }
-        if(count == -1){
+
+        size_t count = send(s, buf, strlen(buf) + 1, 0);
+        if (count != strlen(buf) + 1) {
+            logexit("send");
+        }
+
+        memset(buf, 0, BUFSZ);
+        count = recv(s, buf, BUFSZ, 0);
+        if (count == 0) {
+            // Conexão encerrada pelo servidor
+            printf("Servidor encerrou a conexão.\n");
+            break;
+        }
+        if (count == -1) {
             logexit("recv");
         }
-        total += count;
+
+        //printf("Servidor: %s\n", buf);
     }
 
     close(s);
-
-    printf("received: %u bytes\n", total);
-    puts(buf);
-
     exit(EXIT_SUCCESS);
 }
