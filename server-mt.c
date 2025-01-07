@@ -11,6 +11,7 @@
 #define MAX_CLIENTS 100
 
 // Lista global de clientes
+struct sensor_message clients[MAX_CLIENTS];
 int client_sockets[MAX_CLIENTS];
 int client_count = 0;
 pthread_mutex_t client_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -35,7 +36,7 @@ void *client_handler(void *arg) {
         // Encaminhar mensagem para outros clientes do mesmo tipo
         pthread_mutex_lock(&client_mutex);
         for (int i = 0; i < client_count; i++) {
-            if (client_sockets[i] != client_socket) {
+            if (client_sockets[i] != client_socket && strcmp(clients[i].type, msg.type) == 0) {
                 send(client_sockets[i], &msg, sizeof(msg), 0);
             }
         }
@@ -46,8 +47,26 @@ void *client_handler(void *arg) {
     pthread_mutex_lock(&client_mutex);
     for (int i = 0; i < client_count; i++) {
         if (client_sockets[i] == client_socket) {
+            printf("Client disconnected: %s sensor at (%d,%d)\n", 
+                   clients[i].type, clients[i].coords[0], clients[i].coords[1]);
+
+            // Enviar mensagem de desconexão para os outros clientes do mesmo tipo
+            struct sensor_message disconnect_msg;
+            strcpy(disconnect_msg.type, clients[i].type);
+            disconnect_msg.coords[0] = clients[i].coords[0];
+            disconnect_msg.coords[1] = clients[i].coords[1];
+            disconnect_msg.measurement = -1.0; // Indicador de desconexão
+
+            for (int j = 0; j < client_count; j++) {
+                if (j != i && strcmp(clients[j].type, clients[i].type) == 0) {
+                    send(client_sockets[j], &disconnect_msg, sizeof(disconnect_msg), 0);
+                }
+            }
+
+            // Remover cliente da lista
             close(client_socket);
             client_sockets[i] = client_sockets[client_count - 1];
+            clients[i] = clients[client_count - 1];
             client_count--;
             break;
         }
@@ -98,10 +117,21 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        // Adicionar cliente à lista de sockets
+        // Receber mensagem inicial do cliente para registrar informações
+        struct sensor_message init_msg;
+        if (recv(*client_socket, &init_msg, sizeof(init_msg), 0) <= 0) {
+            perror("Failed to receive initial message");
+            close(*client_socket);
+            free(client_socket);
+            continue;
+        }
+
         pthread_mutex_lock(&client_mutex);
         if (client_count < MAX_CLIENTS) {
-            client_sockets[client_count++] = *client_socket;
+            client_sockets[client_count] = *client_socket;
+            clients[client_count] = init_msg; // Registrar informações do cliente
+            client_count++;
+
             pthread_t tid;
             pthread_create(&tid, NULL, client_handler, client_socket);
         } else {

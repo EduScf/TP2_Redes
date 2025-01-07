@@ -7,7 +7,7 @@ commom.o: commom.c
 	$(CC) $(CFLAGS) -c commom.c -o commom.o
 
 client: client.c commom.o
-	$(CC) $(CFLAGS) client.c commom.o -o client
+	$(CC) $(CFLAGS) client.c commom.o -o client -lm
 
 server: server.c commom.o
 	$(CC) $(CFLAGS) server.c commom.o -o server
