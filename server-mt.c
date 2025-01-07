@@ -1,125 +1,117 @@
 #include "commom.h"
-
-//Coloque as bibliotecas padrões de C
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <pthread.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 #define BUFSZ 1024
+#define MAX_CLIENTS 100
 
-void usage(int argc, char **argv){
-    printf("usage: %s <v4|v6> <server ports>\n", argv[0]);
-    printf("example: %s v4 51511\n", argv[0]);
-    exit(EXIT_FAILURE);
+// Lista global de clientes
+int client_sockets[MAX_CLIENTS];
+int client_count = 0;
+pthread_mutex_t client_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Função para logar mensagens no formato padrão
+void log_message(const char *type, int x, int y, float measurement) {
+    printf("log:\n%s sensor in (%d,%d)\nmeasurement: %.4f\n\n", type, x, y, measurement);
 }
 
-struct client_data{
-    int csock;
+// Função para gerenciar cada cliente
+void *client_handler(void *arg) {
+    int client_socket = *(int *)arg;
+    free(arg);
+
+    struct sensor_message msg;
+
+    // Receber dados do cliente
+    while (recv(client_socket, &msg, sizeof(msg), 0) > 0) {
+        // Log da mensagem recebida
+        log_message(msg.type, msg.coords[0], msg.coords[1], msg.measurement);
+
+        // Encaminhar mensagem para outros clientes do mesmo tipo
+        pthread_mutex_lock(&client_mutex);
+        for (int i = 0; i < client_count; i++) {
+            if (client_sockets[i] != client_socket) {
+                send(client_sockets[i], &msg, sizeof(msg), 0);
+            }
+        }
+        pthread_mutex_unlock(&client_mutex);
+    }
+
+    // Cliente desconectado
+    pthread_mutex_lock(&client_mutex);
+    for (int i = 0; i < client_count; i++) {
+        if (client_sockets[i] == client_socket) {
+            close(client_socket);
+            client_sockets[i] = client_sockets[client_count - 1];
+            client_count--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&client_mutex);
+
+    pthread_exit(NULL);
+}
+
+int main(int argc, char **argv) {
+    if (argc < 3) {
+        printf("usage: %s <v4|v6> <server port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
     struct sockaddr_storage storage;
-};
+    if (server_sockaddr_init(argv[1], argv[2], &storage) != 0) {
+        printf("Invalid address/port\n");
+        exit(EXIT_FAILURE);
+    }
 
-void *client_thread(void *data) {
-    struct client_data *cdata = (struct client_data *)data;
-    struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
+    int server_socket = socket(storage.ss_family, SOCK_STREAM, 0);
+    if (server_socket == -1) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
 
-    char caddrstr[BUFSZ];
-    addrtostr(caddr, caddrstr, BUFSZ);
-    printf("[log] connection from %s\n", caddrstr);
+    if (bind(server_socket, (struct sockaddr *)&storage, sizeof(storage)) != 0) {
+        perror("bind");
+        exit(EXIT_FAILURE);
+    }
 
-    char buf[BUFSZ];
-    char response[BUFSZ]; // Buffer separado para a resposta
+    if (listen(server_socket, 10) != 0) {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Server is listening...\n");
+
     while (1) {
-        memset(buf, 0, BUFSZ);
-        size_t count = recv(cdata->csock, buf, BUFSZ, 0);
-        if (count == 0) {
-            // Conexão encerrada pelo cliente
-            printf("[log] connection closed by %s\n", caddrstr);
-            break;
-        }
-        if (count == -1) {
-            perror("recv");
-            break;
+        struct sockaddr_storage client_storage;
+        socklen_t client_len = sizeof(client_storage);
+        int *client_socket = malloc(sizeof(int));
+        *client_socket = accept(server_socket, (struct sockaddr *)&client_storage, &client_len);
+        if (*client_socket == -1) {
+            perror("accept");
+            free(client_socket);
+            continue;
         }
 
-        printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
-
-        // Construir a resposta no buffer separado, limitando o tamanho de buf
-        snprintf(response, BUFSZ, "Echo from server: %.1000s", buf);
-        count = send(cdata->csock, response, strlen(response) + 1, 0);
-        if (count != strlen(response) + 1) {
-            perror("send");
-            break;
+        // Adicionar cliente à lista de sockets
+        pthread_mutex_lock(&client_mutex);
+        if (client_count < MAX_CLIENTS) {
+            client_sockets[client_count++] = *client_socket;
+            pthread_t tid;
+            pthread_create(&tid, NULL, client_handler, client_socket);
+        } else {
+            printf("Maximum clients connected. Connection refused.\n");
+            close(*client_socket);
+            free(client_socket);
         }
+        pthread_mutex_unlock(&client_mutex);
     }
 
-    close(cdata->csock);
-    free(cdata);
-    pthread_exit(EXIT_SUCCESS);
-}
-
-
-int main(int argc, char **argv){
-    if(argc < 3){
-        usage(argc, argv);
-    }
-    
-    struct sockaddr_storage storage;
-    if(0 != server_sockaddr_init(argv[1], argv[2], &storage)){
-        usage(argc, argv);
-    }
-
-    int s;
-    s = socket(storage.ss_family, SOCK_STREAM, 0);
-    if(s == -1){
-        logexit("socket");
-        exit(EXIT_FAILURE);
-    }
-
-    int enable = 1;
-    if(setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) != 0){
-        logexit("setsockopt");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr *addr = (struct sockaddr *) &storage;
-    if(0 != bind(s, addr, sizeof(storage))){
-        logexit("bind");
-        exit(EXIT_FAILURE);
-    }
-
-    if(0 != listen(s, 10)){
-        logexit("listen");
-        exit(EXIT_FAILURE);
-    }
-
-    char addrstr[BUFSZ];
-    addrtostr(addr, addrstr, BUFSZ);
-    printf("bound to %s, waiting connection\n", addrstr);
-
-    while(1){
-        struct sockaddr_storage cstorage;
-        struct sockaddr *caddr = (struct sockaddr *) &cstorage;
-        socklen_t caddrlen = sizeof(cstorage);
-        int csock = accept(s, caddr, &caddrlen);
-        if(csock == -1){
-            logexit("accept");
-        }    
-        
-        struct client_data *cdata = malloc(sizeof(*cdata));
-        if(!cdata){
-            logexit("malloc");
-        }
-        cdata->csock = csock;
-        memcpy(&(cdata->storage), &cstorage, sizeof(cstorage));
-
-        pthread_t tid;
-        pthread_create(&tid, NULL, client_thread, cdata);
-    }
-
-    exit(EXIT_SUCCESS);
+    close(server_socket);
+    return 0;
 }

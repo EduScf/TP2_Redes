@@ -1,84 +1,120 @@
 #include "commom.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-//Bibliotecas de rede
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <time.h>
+#include <pthread.h>
 
 #define BUFSZ 1024
 
-void usage(int argc, char **argv){
-    printf("usage: %s <server_ip> <server_port>\n", argv[0]);
-    printf("example: %s 127.0.01.1 51511\n", argv[0]);
-    exit(EXIT_FAILURE);
+// Estrutura para passar informações para a thread
+struct client_args {
+    int socket;
+    struct sensor_message msg;
+    int interval;
+};
+
+// Gera um valor aleatório dentro de um intervalo
+float generate_random(float min, float max) {
+    return min + ((float)rand() / RAND_MAX) * (max - min);
+}
+
+// Função que envia mensagens periodicamente
+void *send_messages(void *arg) {
+    struct client_args *args = (struct client_args *)arg;
+
+    while (1) {
+        // Gerar nova medição
+        args->msg.measurement = generate_random(20.0, 40.0); // Alterar conforme o tipo do sensor
+        send(args->socket, &args->msg, sizeof(args->msg), 0);
+
+        printf("Sent: %s sensor in (%d,%d) measurement: %.4f\n",
+               args->msg.type, args->msg.coords[0], args->msg.coords[1], args->msg.measurement);
+
+        sleep(args->interval);
+    }
+
+    pthread_exit(NULL);
+}
+
+// Função para validar os argumentos passados
+void validate_args(int argc, char **argv) {
+    if (argc < 7) {
+        fprintf(stderr, "Error: Invalid number of arguments\n");
+        fprintf(stderr, "Usage: ./client <server_ip> <port> -type <type> -coords <x> <y>\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (strcmp(argv[3], "-type") != 0) {
+        fprintf(stderr, "Error: Expected '-type' argument\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (strcmp(argv[5], "-coords") != 0) {
+        fprintf(stderr, "Error: Expected '-coords' argument\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        usage(argc, argv);
-    }
+    validate_args(argc, argv);
 
+    // Inicializar o endereço do servidor
     struct sockaddr_storage storage;
-    if (0 != addrparse(argv[1], argv[2], &storage)) {
-        usage(argc, argv);
+    if (addrparse(argv[1], argv[2], &storage) != 0) {
+        fprintf(stderr, "Error: Invalid address or port\n");
+        exit(EXIT_FAILURE);
     }
 
     int s = socket(storage.ss_family, SOCK_STREAM, 0);
     if (s == -1) {
-        logexit("socket");
+        perror("socket");
+        exit(EXIT_FAILURE);
     }
+
     struct sockaddr *addr = (struct sockaddr *)&storage;
-
-    if (0 != connect(s, addr, sizeof(storage))) {
-        logexit("connect");
+    if (connect(s, addr, sizeof(storage)) != 0) {
+        perror("connect");
+        exit(EXIT_FAILURE);
     }
 
-    char addrstr[BUFSZ];
-    addrtostr(addr, addrstr, BUFSZ);
-    printf("connected to %s\n", addrstr);
+    printf("Connected to the server.\n");
 
-    char buf[BUFSZ];
-    while (1) {
-        printf("Mensagem: ");
-        memset(buf, 0, BUFSZ);
-        fgets(buf, BUFSZ - 1, stdin);
+    // Configurar a mensagem do sensor
+    struct sensor_message msg;
+    strncpy(msg.type, argv[4], sizeof(msg.type) - 1);
+    msg.type[sizeof(msg.type) - 1] = '\0';
 
-        // Remover newline do final da mensagem
-        size_t len = strlen(buf);
-        if (buf[len - 1] == '\n') {
-            buf[len - 1] = '\0';
-        }
+    msg.coords[0] = atoi(argv[6]);
+    msg.coords[1] = atoi(argv[7]);
 
-        // Verificar se o usuário quer encerrar a conexão
-        if (strcmp(buf, "exit") == 0) {
-            printf("Encerrando a conexão...\n");
-            break;
-        }
+    // Configurar o intervalo com base no tipo do sensor
+    int interval;
+    if (strcmp(msg.type, "temperature") == 0) {
+        interval = 5;
+    } else if (strcmp(msg.type, "humidity") == 0) {
+        interval = 7;
+    } else if (strcmp(msg.type, "air_quality") == 0) {
+        interval = 10;
+    } else {
+        fprintf(stderr, "Error: Invalid sensor type\n");
+        exit(EXIT_FAILURE);
+    }
 
-        size_t count = send(s, buf, strlen(buf) + 1, 0);
-        if (count != strlen(buf) + 1) {
-            logexit("send");
-        }
+    // Criar thread para enviar mensagens
+    struct client_args args = {s, msg, interval};
+    pthread_t tid;
+    pthread_create(&tid, NULL, send_messages, &args);
 
-        memset(buf, 0, BUFSZ);
-        count = recv(s, buf, BUFSZ, 0);
-        if (count == 0) {
-            // Conexão encerrada pelo servidor
-            printf("Servidor encerrou a conexão.\n");
-            break;
-        }
-        if (count == -1) {
-            logexit("recv");
-        }
-
-        //printf("Servidor: %s\n", buf);
+    // Receber mensagens do servidor
+    struct sensor_message recv_msg;
+    while (recv(s, &recv_msg, sizeof(recv_msg), 0) > 0) {
+        printf("Received: %s sensor in (%d,%d) measurement: %.4f\n",
+               recv_msg.type, recv_msg.coords[0], recv_msg.coords[1], recv_msg.measurement);
     }
 
     close(s);
-    exit(EXIT_SUCCESS);
+    return 0;
 }
