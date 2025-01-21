@@ -10,6 +10,7 @@
 #include <float.h>
 
 #define BUFSZ 1024
+#define USAGE_MSG "Usage: ./client <server_ip> <port> -type <temperature|humidity|air_quality> -coords <x> <y>\n"
 
 // Estrutura para passar informações para a thread
 struct client_args {
@@ -46,12 +47,13 @@ void *send_messages(void *arg) {
 void validate_args(int argc, char **argv) {
     if (argc < 7) {
         fprintf(stderr, "Error: Invalid number of arguments\n");
-        fprintf(stderr, "Usage: ./client <server_ip> <port> -type <temperature|humidity|air_quality> -coords <x> <y>\n");
+        fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
     if (strcmp(argv[3], "-type") != 0) {
         fprintf(stderr, "Error: Expected '-type' argument\n");
+        fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
@@ -60,16 +62,19 @@ void validate_args(int argc, char **argv) {
         strcmp(argv[4], "humidity") != 0 && 
         strcmp(argv[4], "air_quality") != 0) {
         fprintf(stderr, "Error: Invalid sensor type\n");
+        fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
     if (strcmp(argv[5], "-coords") != 0) {
         fprintf(stderr, "Error: Expected '-coords' argument\n");
+        fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
     if (argc != 8) {
         fprintf(stderr, "Error: Invalid number of arguments\n");
+        fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
@@ -78,6 +83,7 @@ void validate_args(int argc, char **argv) {
 
     if (x < 0 || x > 9 || y < 0 || y > 9) {
         fprintf(stderr, "Error: Coordinates must be in the range 0-9\n");
+        fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 }
