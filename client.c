@@ -152,7 +152,8 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Connected to the server.\n");
+    //Print para ver se o client conectou corretamente
+    //printf("Connected to the server.\n");
 
     // Configurar a mensagem do sensor
     struct sensor_message msg;

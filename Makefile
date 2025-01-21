@@ -1,19 +1,21 @@
 CC = gcc
 CFLAGS = -Wall
+BIN_DIR = bin
 
-all: client server server-mt
+all: $(BIN_DIR) $(BIN_DIR)/client $(BIN_DIR)/server
+
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
 
 commom.o: commom.c
 	$(CC) $(CFLAGS) -c commom.c -o commom.o
 
-client: client.c commom.o
-	$(CC) $(CFLAGS) client.c commom.o -o client -lm
+$(BIN_DIR)/client: client.c commom.o
+	$(CC) $(CFLAGS) client.c commom.o -o $(BIN_DIR)/client -lm
 
-server: server.c commom.o
-	$(CC) $(CFLAGS) server.c commom.o -o server
-
-server-mt: server-mt.c commom.o
-	$(CC) $(CFLAGS) server-mt.c commom.o -o server-mt -lpthread
+$(BIN_DIR)/server: server.c commom.o
+	$(CC) $(CFLAGS) server.c commom.o -o $(BIN_DIR)/server -lpthread
 
 clean:
-	rm -f *.o client server server-mt
+	rm -f *.o
+	rm -rf $(BIN_DIR)
