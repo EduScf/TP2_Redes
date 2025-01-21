@@ -55,6 +55,14 @@ void validate_args(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
+    // Adicionar validação do tipo de sensor aqui
+    if (strcmp(argv[4], "temperature") != 0 && 
+        strcmp(argv[4], "humidity") != 0 && 
+        strcmp(argv[4], "air_quality") != 0) {
+        fprintf(stderr, "Error: Invalid sensor type\n");
+        exit(EXIT_FAILURE);
+    }
+
     if (strcmp(argv[5], "-coords") != 0) {
         fprintf(stderr, "Error: Expected '-coords' argument\n");
         exit(EXIT_FAILURE);
