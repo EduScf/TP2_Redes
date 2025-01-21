@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <math.h>
 #include <float.h>
+#include <stdbool.h>
 
 #define BUFSZ 1024
 #define USAGE_MSG "Usage: ./client <server_ip> <port> -type <temperature|humidity|air_quality> -coords <x> <y>\n"
@@ -19,6 +20,7 @@ struct client_args {
     float min_value;
     float max_value;
     int interval;
+    bool first_measurement;  // Para controlar se é a primeira medição
 };
 
 // Gera um valor aleatório dentro de um intervalo
@@ -30,10 +32,13 @@ float generate_random(float min, float max) {
 void *send_messages(void *arg) {
     struct client_args *args = (struct client_args *)arg;
 
-    while (1) {
-        // Gerar nova medição dentro do intervalo especificado
+    // Gerar apenas a primeira medição aleatoriamente
+    if (args->first_measurement) {
         args->msg.measurement = generate_random(args->min_value, args->max_value);
+        args->first_measurement = false;
+    }
 
+    while (1) {
         // Enviar mensagem ao servidor
         send(args->socket, &args->msg, sizeof(args->msg), 0);
 
@@ -120,8 +125,13 @@ void update_closest_neighbors(float neighbors[3], float distance) {
 }
 
 int main(int argc, char **argv) {
+    // Inicializar semente para números aleatórios
+    srand(time(NULL));
+
     validate_args(argc, argv);
     float closest_neighbors[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+    float neighbor_measurements[3] = {0.0, 0.0, 0.0};  // Armazena medições dos 3 vizinhos mais próximos
+    int neighbor_coords[3][2] = {{-1,-1}, {-1,-1}, {-1,-1}};  // Armazena coordenadas dos 3 vizinhos
 
     // Inicializar o endereço do servidor
     struct sockaddr_storage storage;
@@ -174,7 +184,7 @@ int main(int argc, char **argv) {
     }
 
     // Criar thread para enviar mensagens
-    struct client_args args = {s, msg, min_value, max_value, interval};
+    struct client_args args = {s, msg, min_value, max_value, interval, true}; // Inicializa first_measurement como true
     pthread_t tid;
     pthread_create(&tid, NULL, send_messages, &args);
 
@@ -186,23 +196,65 @@ int main(int argc, char **argv) {
 
         // Tratamento das mensagens recebidas
         if (recv_msg.measurement == -1.0) {
-            strcpy(action, "removed");
+                    strcpy(action, "removed");
+                    // Remover da lista de vizinhos se necessário
+                    for (int i = 0; i < 3; i++) {
+                        if (neighbor_coords[i][0] == recv_msg.coords[0] && 
+                            neighbor_coords[i][1] == recv_msg.coords[1]) {
+                            // Reorganizar arrays removendo o vizinho
+                            for (int j = i; j < 2; j++) {
+                                closest_neighbors[j] = closest_neighbors[j + 1];
+                                neighbor_measurements[j] = neighbor_measurements[j + 1];
+                                neighbor_coords[j][0] = neighbor_coords[j + 1][0];
+                                neighbor_coords[j][1] = neighbor_coords[j + 1][1];
+                            }
+                            closest_neighbors[2] = FLT_MAX;
+                            neighbor_coords[2][0] = -1;
+                            neighbor_coords[2][1] = -1;
+                            break;
+                        }
+                    }
         } else if (distance == 0.0) {
             strcpy(action, "same location");
-        } else if (distance > closest_neighbors[2]) {
-            strcpy(action, "not neighbor");
         } else {
-            float correction = update_measurement(msg.measurement, recv_msg.measurement, distance) - msg.measurement;
-            msg.measurement += correction;
-            msg.measurement = clamp_measurement(msg.measurement, min_value, max_value);
-            snprintf(action, sizeof(action), "correction of %.4f", correction);
+            // Verificar se é um dos 3 vizinhos mais próximos
+            bool is_closest = false;
+            for (int i = 0; i < 3; i++) {
+                if (closest_neighbors[i] > distance || 
+                    (closest_neighbors[i] == distance && 
+                     neighbor_coords[i][0] == recv_msg.coords[0] && 
+                     neighbor_coords[i][1] == recv_msg.coords[1])) {
+                    // Reorganizar arrays para inserir novo vizinho
+                    for (int j = 2; j > i; j--) {
+                        closest_neighbors[j] = closest_neighbors[j - 1];
+                        neighbor_measurements[j] = neighbor_measurements[j - 1];
+                        neighbor_coords[j][0] = neighbor_coords[j - 1][0];
+                        neighbor_coords[j][1] = neighbor_coords[j - 1][1];
+                    }
+                    closest_neighbors[i] = distance;
+                    neighbor_measurements[i] = recv_msg.measurement;
+                    neighbor_coords[i][0] = recv_msg.coords[0];
+                    neighbor_coords[i][1] = recv_msg.coords[1];
+                    is_closest = true;
+                    break;
+                }
+            }
+
+            if (!is_closest && closest_neighbors[2] < distance) {
+                strcpy(action, "not neighbor");
+            } else {
+                // Atualizar medição apenas se for um dos 3 mais próximos
+                float correction = update_measurement(args.msg.measurement, recv_msg.measurement, distance) - 
+                                 args.msg.measurement;
+                args.msg.measurement += correction;
+                args.msg.measurement = clamp_measurement(args.msg.measurement, min_value, max_value);
+                snprintf(action, sizeof(action), "correction of %.4f", correction);
+            }
         }
 
-        // Log da mensagem recebida
         printf("log:\n%s sensor in (%d,%d)\nmeasurement: %.4f\naction: %s\n\n",
-               recv_msg.type, recv_msg.coords[0], recv_msg.coords[1], recv_msg.measurement, action);
-
-        update_closest_neighbors(closest_neighbors, distance);
+               recv_msg.type, recv_msg.coords[0], recv_msg.coords[1], 
+               recv_msg.measurement, action);
     }
 
     close(s);

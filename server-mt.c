@@ -36,7 +36,7 @@ void *client_handler(void *arg) {
         // Encaminhar mensagem para outros clientes do mesmo tipo
         pthread_mutex_lock(&client_mutex);
         for (int i = 0; i < client_count; i++) {
-            if (client_sockets[i] != client_socket && strcmp(clients[i].type, msg.type) == 0) {
+            if (strcmp(clients[i].type, msg.type) == 0) {
                 send(client_sockets[i], &msg, sizeof(msg), 0);
             }
         }
