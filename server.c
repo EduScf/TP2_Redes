@@ -47,8 +47,8 @@ void *client_handler(void *arg) {
     pthread_mutex_lock(&client_mutex);
     for (int i = 0; i < client_count; i++) {
         if (client_sockets[i] == client_socket) {
-            printf("Client disconnected: %s sensor at (%d,%d)\n", 
-                   clients[i].type, clients[i].coords[0], clients[i].coords[1]);
+            // Exibir a mensagem de desconexão no formato correto
+            log_message(clients[i].type, clients[i].coords[0], clients[i].coords[1], -1.0);
 
             // Enviar mensagem de desconexão para os outros clientes do mesmo tipo
             struct sensor_message disconnect_msg;
@@ -72,6 +72,7 @@ void *client_handler(void *arg) {
         }
     }
     pthread_mutex_unlock(&client_mutex);
+
 
     pthread_exit(NULL);
 }
