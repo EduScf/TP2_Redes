@@ -74,19 +74,19 @@ void *send_messages(void *arg) {
 
 // Função para validar os argumentos passados
 void validate_args(int argc, char **argv) {
-    if (argc < 7) {
+    if (argc < 7) { //Numero de argumentos minimo
         fprintf(stderr, "Error: Invalid number of arguments\n");
         fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
-    if (strcmp(argv[3], "-type") != 0) {
+    if (strcmp(argv[3], "-type") != 0) { //Verifica se o argumento -type foi passado
         fprintf(stderr, "Error: Expected '-type' argument\n");
         fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
-    // Adicionar validação do tipo de sensor aqui
+    // validação do tipo de sensor aqui
     if (strcmp(argv[4], "temperature") != 0 && 
         strcmp(argv[4], "humidity") != 0 && 
         strcmp(argv[4], "air_quality") != 0) {
@@ -95,22 +95,22 @@ void validate_args(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    if (strcmp(argv[5], "-coords") != 0) {
+    if (strcmp(argv[5], "-coords") != 0) { //Verifica se o argumento -coords foi passado
         fprintf(stderr, "Error: Expected '-coords' argument\n");
         fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
-    if (argc != 8) {
+    if (argc != 8) { //Numero de argumentos maximo
         fprintf(stderr, "Error: Invalid number of arguments\n");
         fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
     }
 
-    int x = atoi(argv[6]);
+    int x = atoi(argv[6]); //Converte o argumento para inteiro
     int y = atoi(argv[7]);
 
-    if (x < 0 || x > 9 || y < 0 || y > 9) {
+    if (x < 0 || x > 9 || y < 0 || y > 9) { //Verifica se as coordenadas estão no intervalo 0-9
         fprintf(stderr, "Error: Coordinates must be in the range 0-9\n");
         fprintf(stderr, USAGE_MSG);
         exit(EXIT_FAILURE);
@@ -151,7 +151,7 @@ void update_closest_neighbors(float neighbors[3], float distance) {
 int main(int argc, char **argv) {
     // Inicializar semente para números aleatórios
     srand(time(NULL));
-
+    // OBS: A semente foi inicializada no início do programa para garantir que os valores aleatórios sejam diferentes a cada execução
     validate_args(argc, argv);
     float closest_neighbors[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
     float neighbor_measurements[3] = {0.0, 0.0, 0.0};  // Armazena medições dos 3 vizinhos mais próximos
@@ -177,6 +177,7 @@ int main(int argc, char **argv) {
     }
 
     //Print para ver se o client conectou corretamente
+    //Preciso tirar pra deixar na formatação pedida
     //printf("Connected to the server.\n");
 
     // Configurar a mensagem do sensor
