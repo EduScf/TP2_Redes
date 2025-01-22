@@ -46,6 +46,30 @@ void *send_messages(void *arg) {
     }
 
     pthread_exit(NULL);
+
+
+    //Testando com valor fixo de temperatura pra fazer igual o exemplo do pdf:
+    
+    /*struct client_args *args = (struct client_args *)arg;
+
+    // Gerar apenas a primeira medição
+    if (args->first_measurement) {
+        if (strcmp(args->msg.type, "temperature") == 0) {
+            args->msg.measurement = 25.0;  // Valor fixo para temperatura
+        } else {
+            args->msg.measurement = generate_random(args->min_value, args->max_value);
+        }
+        args->first_measurement = false;
+    }
+
+    while (1) {
+        // Enviar mensagem ao servidor
+        send(args->socket, &args->msg, sizeof(args->msg), 0);
+        sleep(args->interval);
+    }
+
+    pthread_exit(NULL);*/
+
 }
 
 // Função para validar os argumentos passados
